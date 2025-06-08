@@ -1,4 +1,3 @@
-import type { SQLQuery } from 'sql.js';
 const initSqlJs = require('sql.js');
 const fs = require('fs/promises');
 const path = require('path');
@@ -20,5 +19,16 @@ export function upsert(db: Database, table: string, row: Row) {
   const cols = Object.keys(row);
   const placeholders = cols.map(() => '?').join(',');
   const query = `INSERT OR REPLACE INTO ${table} (${cols.join(',')}) VALUES (${placeholders})`;
-  db.run(query, Object.values(row) as SQLQuery[]);
+  // Use the values directly without type assertion
+  db.run(query, Object.values(row));
+}
+export function query(db: Database, sql: string, params: any[] = []): Row[] {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  const results: Row[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+  return results;
 }

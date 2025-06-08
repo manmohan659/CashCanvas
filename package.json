@@ -23,20 +23,21 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.50.0",
     "next": "^15.3.3",
+    "ofx-js": "^0.2.0",
+    "papaparse": "^5.4.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "papaparse": "^5.4.1",
-    "ofx-js": "^0.2.0",
-    "sql.js": "^1.9.0",
-    "recharts": "^2.8.0"
+    "recharts": "^2.15.3",
+    "spl.js": "^0.1.2",
+    "sql.js": "^1.9.0"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.12",
     "@types/node": "^22.15.30",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.6",
-    "typescript": "^5.8.3",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.1",
-    "@types/jest": "^29.5.12"
+    "typescript": "^5.8.3"
   }
 }
