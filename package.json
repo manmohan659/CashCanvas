@@ -21,7 +21,9 @@
   "homepage": "https://github.com/manmohan659/CashCanvas#readme",
   "description": "",
   "dependencies": {
+    "@supabase/auth-helpers-react": "^0.5.0",
     "@supabase/supabase-js": "^2.50.0",
+    "formidable": "^3.5.4",
     "next": "^15.3.3",
     "ofx-js": "^0.2.0",
     "papaparse": "^5.4.1",
