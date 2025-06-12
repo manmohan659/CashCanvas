@@ -1,15 +1,28 @@
 import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-type Entry = { month: string; value: number };
+interface BarMonthlyProps {
+  data: Array<{ month: string; value: number }>;
+}
 
-export default function BarMonthly({ data }: { data: Entry[] }) {
+export default function BarMonthly({ data }: BarMonthlyProps) {
+  if (!data || data.length === 0) {
+    return <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      No monthly data available
+    </div>;
+  }
+
   return (
-    <BarChart width={500} height={300} data={data}>
-      <XAxis dataKey="month" />
-      <YAxis />
-      <Tooltip />
-      <Bar dataKey="value" fill="#82ca9d" />
-    </BarChart>
+    <div style={{ height: '300px' }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="month" />
+          <YAxis tickFormatter={(value) => `$${Math.abs(value)}`} />
+          <Tooltip formatter={(value) => [`$${Math.abs(value as number)}`, 'Amount']} />
+          <Bar dataKey="value" fill="#8884d8" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

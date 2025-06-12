@@ -81,4 +81,7 @@ yarn add @supabase/supabase-js
 pnpm add @supabase/supabase-js
 ```
 
+npm install @supabase/auth-helpers-react
+npm install formidable
+
 Choose the commands appropriate for your setup and package manager. If you initialized your project with `create-next-app`, many of these (like Next.js, React, TypeScript, and types) would have been set up automatically. In that case, `npm install` (or its equivalent) is usually sufficient after cloning or setting up the project.

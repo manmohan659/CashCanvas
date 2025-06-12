@@ -1,11 +1,17 @@
-// TODO: Implement redirection to Chase OAuth authorization URL
-import type { NextApiRequest, NextApiResponse } from 'next';
+import { NextApiRequest, NextApiResponse } from 'next';
+import React from 'react';
+import { buildChaseAuthUrl } from '../../../../lib/oauth';
 
-export default function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  // TODO: Construct the Chase OAuth URL with client_id, redirect_uri, scope, etc.
-  const chaseAuthUrl = `https://api.chase.com/aggregator-oauth/authorize?response_type=code&client_id=${process.env.CHASE_CLIENT_ID}&redirect_uri=${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/chase/callback&scope=ais:consents:AccountAggregation`;
-  res.redirect(302, chaseAuthUrl);
+export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  console.log('[api/auth/chase] OAuth initiation requested');
+  
+  try {
+    const authUrl = buildChaseAuthUrl(process.env.CHASE_CLIENT_ID!, process.env.CHASE_REDIRECT_URI!);
+    console.log('[api/auth/chase] Redirecting to Chase OAuth:', authUrl);
+    
+    res.redirect(302, authUrl);
+  } catch (error) {
+    console.error('[api/auth/chase] OAuth initiation failed:', error);
+    res.status(500).json({ error: 'OAuth setup failed' });
+  }
 }
