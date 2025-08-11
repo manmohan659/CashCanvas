@@ -1,15 +1,18 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { supabase } from '../../../../lib/supabase';
+import { createServerSupabaseClient } from '@supabase/auth-helpers-nextjs';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log('[api/sync/chase/transactions] Transactions sync requested');
   
   try {
+    const supa = createServerSupabaseClient({ req, res });
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) return res.status(401).json({ error: 'Not authenticated' });
     // Get user's accounts and token
-    const { data: tokenData } = await supabase
+    const { data: tokenData } = await supa
       .from('chase_tokens')
       .select('access_token')
-      .eq('user_id', 'current_user') // TODO: Get actual user ID
+      .eq('user_id', user.id)
       .single();
     
     if (!tokenData) {
@@ -17,9 +20,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'No valid Chase token' });
     }
     
-    const { data: accounts } = await supabase
+    const { data: accounts } = await supa
       .from('accounts')
-      .select('id');
+      .select('id')
+      .eq('user_id', user.id);
     
     if (!accounts?.length) {
       console.log('[api/sync/chase/transactions] No accounts found, running accounts sync first');
@@ -58,10 +62,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         if (transactionsData.transactions) {
           for (const transaction of transactionsData.transactions) {
-            const { error } = await supabase
+            const { error } = await supa
               .from('transactions')
               .upsert({
                 id: transaction.transactionId,
+                user_id: user.id,
                 account_id: account.id,
                 date: transaction.postedTimestamp?.split('T')[0] || transaction.transactionTimestamp?.split('T')[0],
                 amount: transaction.amount,
@@ -86,6 +91,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
   } catch (error) {
     console.error('[api/sync/chase/transactions] Sync failed:', error);
-    res.status(500).json({ error: 'Sync failed', details: error.message });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Sync failed', details: message });
   }
 }

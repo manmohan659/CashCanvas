@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import React from 'react';
+import { insertRule, applyRulesToTransactions } from '../lib/sqlite/init';
 interface TagModalProps {
   onSave: (rule: any) => void;
   onClose: () => void;
@@ -8,10 +9,12 @@ interface TagModalProps {
 export default function TagModal({ onSave, onClose }: TagModalProps) {
   const [rule, setRule] = useState({ pattern: '', category: '' });
   
-  const handleSave = () => {
-    if (rule.pattern && rule.category) {
-      onSave(rule);
-    }
+  const handleSave = async () => {
+    if (!rule.pattern || !rule.category) return;
+    const id = `rule_${Date.now()}`;
+    await insertRule({ id, pattern: rule.pattern, category: rule.category });
+    await applyRulesToTransactions();
+    onSave({ ...rule, id });
   };
   
   return (

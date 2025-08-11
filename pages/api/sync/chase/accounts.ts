@@ -1,15 +1,18 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { supabase } from '../../../../lib/supabase';
+import { createServerSupabaseClient } from '@supabase/auth-helpers-nextjs';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log('[api/sync/chase/accounts] Accounts sync requested');
   
   try {
+    const supa = createServerSupabaseClient({ req, res });
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) return res.status(401).json({ error: 'Not authenticated' });
     // Get user's access token
-    const { data: tokenData, error: tokenError } = await supabase
+    const { data: tokenData, error: tokenError } = await supa
       .from('chase_tokens')
       .select('access_token')
-      .eq('user_id', 'current_user') // TODO: Get actual user ID
+      .eq('user_id', user.id)
       .single();
     
     if (tokenError || !tokenData) {
@@ -38,10 +41,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let imported = 0;
     if (accountsData.accounts) {
       for (const account of accountsData.accounts) {
-        const { error } = await supabase
+        const { error } = await supa
           .from('accounts')
           .upsert({
             id: account.accountId,
+            user_id: user.id,
             name: account.accountName,
             type: account.accountType,
             balance: account.balance,
@@ -57,6 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
   } catch (error) {
     console.error('[api/sync/chase/accounts] Sync failed:', error);
-    res.status(500).json({ error: 'Sync failed', details: error.message });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Sync failed', details: message });
   }
 }

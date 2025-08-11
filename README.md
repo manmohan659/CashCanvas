@@ -1,48 +1,79 @@
 # CashCanvas
 
-CashCanvas is a proof-of-concept personal finance tracker. It demonstrates how to import transactions from CSV files or a bank API and visualize spending. The app uses Next.js for the frontend and Supabase for authentication and storage.
+CashCanvas is a local-first personal finance tracker built with Next.js. Import transactions (CSV/PDF or bank API), categorize, and visualize spending. Supabase can be used for auth/storage, but the core experience works entirely in the browser using `sql.js`.
 
-## Development
+## Prerequisites
 
-1. Install dependencies
+- Node.js 20+ and npm
+- Optional: Supabase CLI if you plan to run Supabase locally (`brew install supabase/tap/supabase`)
+
+## Quick Start
+
+1) Install dependencies
 
 ```bash
 npm install
 ```
 
-2. Set up Supabase
+2) Configure environment
+
+Copy `.env.example` to `.env.local` and fill in values as needed:
 
 ```bash
-supabase init
-supabase db reset
+cp .env.example .env.local
 ```
 
-Environment variables required:
+Required/Optional vars:
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_SITE_URL` – your Vercel/Vite URL for OAuth callbacks
-- `CHASE_CLIENT_ID` – OAuth client id
+- `NEXT_PUBLIC_SITE_URL` (required): Base URL of the app (e.g., `http://localhost:3000`).
+- `NEXT_PUBLIC_SUPABASE_URL` (optional): Only if using Supabase.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (optional): Only if using Supabase.
+- `CHASE_CLIENT_ID` (optional): Only if using Chase OAuth.
+- `CHASE_CLIENT_SECRET` (optional): Only if using Chase OAuth.
+- `CHASE_REDIRECT_URI` (optional): Must match `.../api/auth/chase/callback`. For local dev: `http://localhost:3000/api/auth/chase/callback`.
 
-3. Run the development server
+LLM setup: No server env needed. API keys are stored client-side via the in-app "AI Settings" modal and are never sent to the server.
+
+3) Run the development server
 
 ```bash
 npm run dev
 ```
 
-4. Run tests
+Open `http://localhost:3000` in your browser.
+
+4) Run tests
 
 ```bash
 npm test
 ```
 
+## Optional: Supabase Local
+
+If you want to run Supabase locally:
+
+```bash
+supabase init
+supabase db reset
+# or
+supabase start
+```
+
+Ensure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` match your local Supabase instance.
+
+## Assets and Local-First DB
+
+- `public/sql-wasm.wasm` is required by `sql.js` in the browser and is already included.
+- `public/pdf.worker.min.mjs` is included for PDF parsing.
+- Browser persists the SQLite database to `localStorage`; no server DB is required.
+
 ## Project Structure
 
 - `pages/` – Next.js pages and API routes
 - `components/` – React UI components
-- `lib/` – helper utilities and database code
+- `lib/` – utilities (`sqlite` local DB, parsers, agent)
 - `hooks/` – React hooks for auth and syncing
-- `supabase/migrations/` – Postgres schema
+- `supabase/migrations/` – (optional) Postgres schema
 
 ## License
 

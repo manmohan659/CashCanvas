@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { supabase } from '../../../../lib/supabase';
+import { createServerSupabaseClient } from '@supabase/auth-helpers-nextjs';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log('[api/auth/chase/callback] OAuth callback received');
@@ -17,6 +17,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   
   try {
+    const supa = createServerSupabaseClient({ req, res });
+    const { data: { user } } = await supa.auth.getUser();
+    if (!user) {
+      console.error('[api/auth/chase/callback] No authenticated user');
+      return res.redirect('/app?status=auth_required');
+    }
     console.log('[api/auth/chase/callback] Exchanging code for tokens');
     
     const tokenResponse = await fetch('https://api.chase.com/aggregator-oauth/token', {
@@ -42,10 +48,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('[api/auth/chase/callback] Tokens received successfully');
     
     // Store tokens in Supabase
-    const { error: dbError } = await supabase
+    const { error: dbError } = await supa
       .from('chase_tokens')
       .upsert({
-        user_id: 'current_user', // TODO: Get actual user ID from session
+        user_id: user.id,
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
