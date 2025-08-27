@@ -3,13 +3,11 @@ import { generateTransactionId } from '../sqlite/init';
 
 // pdf.js as ESM
 // Note: we set workerSrc to the public file we copied: /pdf.worker.min.mjs
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
+// @ts-ignore - pdfjsLib ESM typing is incomplete for build
 import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 
 // Configure worker (browser only)
 try {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (pdfjsLib as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 } catch { /* noop */ }
 

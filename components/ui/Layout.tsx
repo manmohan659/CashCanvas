@@ -66,6 +66,7 @@ export default function Layout({ children }: LayoutProps) {
           <Link href="/" className="brand">CashCanvas</Link>
           <nav className="nav">
             <Link href="/app" className={`nav-link ${isActive('/app') ? 'active' : ''}`}>Dashboard</Link>
+            <Link href="/app/split" className={`nav-link ${isActive('/app/split') ? 'active' : ''}`}>Split</Link>
             <Link href="/" className={`nav-link ${isActive('/') ? 'active' : ''}`}>Home</Link>
             {mounted && <ThemeToggle />}
             {mounted && (

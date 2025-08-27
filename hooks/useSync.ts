@@ -8,6 +8,7 @@ export const useSync = () => {
   const sync = useCallback(async (rows: any[]) => {
     setSyncing(true);
     try {
+      if (!supabase) return; // Supabase not configured; skip remote sync
       await supabase.from('transactions').upsert(rows);
     } catch (error) {
       console.error('Sync failed:', error);

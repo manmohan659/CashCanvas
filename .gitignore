@@ -109,3 +109,7 @@ next-env.d.ts
 # Local SQLite DBs #
 ###################
 *.db
+
+# Local helper scripts #
+#######################
+scripts/run-local.sh

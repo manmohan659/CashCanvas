@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest"
+    "test": "jest",
+    "run:local": "bash scripts/run-local.sh"
   },
   "repository": {
     "type": "git",
@@ -37,8 +38,10 @@
     "react-dom": "^19.1.0",
     "react-markdown": "^9.1.0",
     "recharts": "^2.15.3",
+    "remark-gfm": "^4.0.0",
     "spl.js": "^0.1.2",
-    "sql.js": "^1.9.0"
+    "sql.js": "^1.9.0",
+    "tesseract.js": "^5.1.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

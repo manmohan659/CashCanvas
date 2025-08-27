@@ -152,6 +152,102 @@ async function createSchemaIfNeeded() {
       created_at TEXT,
       warnings TEXT
     );
+    
+    /* Splitwise-like schema (local-first) */
+    CREATE TABLE IF NOT EXISTS friends (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      display_name TEXT,
+      email TEXT,
+      phone TEXT,
+      avatar_url TEXT,
+      created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS split_groups (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      name TEXT,
+      default_currency TEXT,
+      meta TEXT,
+      created_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS split_group_members (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      group_id TEXT,
+      friend_id TEXT,
+      role TEXT,
+      joined_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sgm_unique ON split_group_members(group_id, friend_id);
+    CREATE INDEX IF NOT EXISTS idx_sgm_group ON split_group_members(user_id, group_id);
+    
+    CREATE TABLE IF NOT EXISTS split_expenses (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      group_id TEXT,
+      payer_member_id TEXT,
+      description TEXT,
+      date TEXT,
+      amount REAL,
+      currency TEXT,
+      fx_rate REAL,
+      category TEXT,
+      notes TEXT,
+      split_type TEXT,
+      split_meta TEXT,
+      created_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_split_expenses_group_date ON split_expenses(user_id, group_id, date);
+    
+    CREATE TABLE IF NOT EXISTS split_expense_splits (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      expense_id TEXT,
+      member_id TEXT,
+      amount_owed REAL,
+      weight REAL,
+      percent REAL,
+      itemized_meta TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_split_splits_unique ON split_expense_splits(expense_id, member_id);
+    CREATE INDEX IF NOT EXISTS idx_split_splits_expense ON split_expense_splits(user_id, expense_id);
+    
+    CREATE TABLE IF NOT EXISTS split_payments (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      group_id TEXT,
+      from_member_id TEXT,
+      to_member_id TEXT,
+      amount REAL,
+      currency TEXT,
+      fx_rate REAL,
+      method TEXT,
+      date TEXT,
+      note TEXT,
+      created_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_split_payments_group_date ON split_payments(user_id, group_id, date);
+    
+    CREATE TABLE IF NOT EXISTS split_recurring (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      group_id TEXT,
+      template_meta TEXT,
+      schedule TEXT,
+      next_due TEXT,
+      last_run TEXT
+    );
+    
+    CREATE TABLE IF NOT EXISTS split_attachments (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      expense_id TEXT,
+      mime TEXT,
+      size INTEGER,
+      data_base64 TEXT,
+      created_at TEXT
+    );
   `);
 
   // Conditional migrations: add user_id columns if missing
@@ -159,6 +255,7 @@ async function createSchemaIfNeeded() {
   await ensureColumnExists('transactions', "meta TEXT");
   await ensureColumnExists('transactions', "import_source TEXT");
   await ensureColumnExists('transactions', "import_batch TEXT");
+  await ensureColumnExists('transactions', "fingerprint TEXT");
   await ensureColumnExists('rules', "user_id TEXT");
   await ensureColumnExists('accounts', "user_id TEXT");
 
@@ -170,6 +267,8 @@ async function createSchemaIfNeeded() {
     CREATE INDEX IF NOT EXISTS idx_tx_user_category ON transactions(user_id, category);
     CREATE INDEX IF NOT EXISTS idx_imports_user_hash ON imports(user_id, file_hash);
     CREATE INDEX IF NOT EXISTS idx_imports_batch ON imports(import_batch);
+    CREATE INDEX IF NOT EXISTS idx_friends_user_name ON friends(user_id, lower(display_name));
+    CREATE INDEX IF NOT EXISTS idx_split_groups_user_name ON split_groups(user_id, lower(name));
   `);
 
   // Optional full-text search index (FTS5). If not supported, we silently skip.
@@ -206,6 +305,18 @@ async function createSchemaIfNeeded() {
 
   // Seed default user and current user setting; backfill user_id on existing rows
   await ensureDefaultUserAndBackfill();
+
+  // Backfill fingerprints and dedupe legacy rows once columns exist
+  try { await backfillTransactionFingerprintsAndDedupe(); } catch {}
+
+  // Now that duplicates are removed, create the unique index for enforcement
+  try {
+    sqlJsDb.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_user_fingerprint ON transactions(user_id, fingerprint);
+    `);
+  } catch {
+    // If creation fails (unexpected), leave as-is to avoid breaking init
+  }
 }
 
 async function ensureColumnExists(table: string, columnDef: string): Promise<void> {
@@ -234,6 +345,53 @@ async function ensureDefaultUserAndBackfill(): Promise<void> {
     UPDATE rules        SET user_id='local_default' WHERE user_id IS NULL;
     UPDATE accounts     SET user_id='local_default' WHERE user_id IS NULL;
   `);
+}
+
+/**
+ * One-time maintenance: backfill missing transaction fingerprints for all rows
+ * and remove duplicates grouped by (user_id, date, normalized(description), abs(amount)).
+ * Safe to run multiple times.
+ */
+async function backfillTransactionFingerprintsAndDedupe(): Promise<void> {
+  // 1) Backfill fingerprints where NULL
+  const missing = await query(
+    `SELECT id, user_id, date, description, amount
+     FROM transactions
+     WHERE fingerprint IS NULL OR TRIM(COALESCE(fingerprint,'')) = ''`
+  );
+  for (const r of missing as Array<{ id: string; user_id: string; date: string; description?: string; amount: number }>) {
+    const fp = computeTransactionFingerprint(r.date, r.description || '', Number(r.amount || 0));
+    try {
+      await run('UPDATE transactions SET fingerprint = ? WHERE id = ? AND user_id = ?', [fp, r.id, r.user_id]);
+    } catch {
+      // ignore per-row failures
+    }
+  }
+
+  // 2) Dedupe by (user_id, date, normalized description, abs(amount))
+  const all = await query(
+    `SELECT id, user_id, date, description, amount
+     FROM transactions
+     ORDER BY user_id, date, description`
+  );
+  type Row = { id: string; user_id: string; date: string; description?: string; amount: number };
+  const groups = new Map<string, Row[]>();
+  for (const r of all as Row[]) {
+    const key = `${r.user_id}|${(r.date || '').trim()}|${(r.description || '').trim().toLowerCase().replace(/\s+/g,' ')}|${Math.abs(Number(r.amount || 0)).toFixed(2)}`;
+    const list = groups.get(key) || [];
+    list.push(r);
+    groups.set(key, list);
+  }
+  for (const key of Array.from(groups.keys())) {
+    const list = groups.get(key)!;
+    if (list.length <= 1) continue;
+    // Keep the row with a negative amount if present, otherwise the first
+    const keeper = list.find(r => Number(r.amount) < 0) || list[0];
+    for (const r of list) {
+      if (r.id === keeper.id) continue;
+      try { await run('DELETE FROM transactions WHERE id = ? AND user_id = ?', [r.id, r.user_id]); } catch {}
+    }
+  }
 }
 
 function mapRows(results: any[]): any[] {
@@ -373,6 +531,51 @@ export function sha256Hex(input: string): string {
     hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
   }
   return `h_${(hash >>> 0).toString(16)}`;
+}
+
+function normalizeDescriptionForFingerprint(raw: string): string {
+  return (raw || '').toString().trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function amountToKey(amount: number): string {
+  return Number(amount || 0).toFixed(2);
+}
+
+export function computeTransactionFingerprint(date: string, description: string, amount: number): string {
+  const key = `${(date || '').trim()}|${normalizeDescriptionForFingerprint(description)}|${amountToKey(amount)}`;
+  return sha256Hex(key);
+}
+
+export async function getExistingTransactionIds(userId: string, ids: string[]): Promise<Set<string>> {
+  const result = new Set<string>();
+  if (!ids || ids.length === 0) return result;
+  const CHUNK = 500;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = await query(
+      `SELECT id FROM transactions WHERE user_id = ? AND id IN (${placeholders})`,
+      [userId, ...chunk]
+    );
+    for (const r of rows as Array<{ id: string }>) result.add(r.id);
+  }
+  return result;
+}
+
+export async function getExistingFingerprints(userId: string, fps: string[]): Promise<Set<string>> {
+  const result = new Set<string>();
+  if (!fps || fps.length === 0) return result;
+  const CHUNK = 500;
+  for (let i = 0; i < fps.length; i += CHUNK) {
+    const chunk = fps.slice(i, i + CHUNK);
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = await query(
+      `SELECT fingerprint FROM transactions WHERE user_id = ? AND fingerprint IN (${placeholders})`,
+      [userId, ...chunk]
+    );
+    for (const r of rows as Array<{ fingerprint: string }>) result.add(r.fingerprint);
+  }
+  return result;
 }
 
 export async function recordImportSummary(summary: {

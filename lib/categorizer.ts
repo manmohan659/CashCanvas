@@ -52,12 +52,19 @@ function detectPaymentMethod(source: string): string | undefined {
 }
 
 const CITY_MAP: Array<[RegExp, string]> = [
-  [/\b(NY|NYC|NEW\s*YORK|BROOKLYN|QUEENS|MANHATTAN|BRONX|STATEN\s*ISLAND)\b/, 'NY'],
-  [/\b(SF|SFO|SAN\s*FRANCISCO)\b/, 'SF'],
-  [/\b(LA|LOS\s*ANGELES)\b/, 'LA'],
+  // New York strong signals
+  [/\b(NYC|NEW\s*YORK|BROOKLYN|QUEENS|MANHATTAN|BRONX|STATEN\s*ISLAND|MTA|JFK|LGA|EWR|LIBERTY|STATUE)\b/, 'NY'],
+  // San Francisco Bay Area strong signals
+  [/\b(SF|SFO|SAN\s*FRANCISCO|BART|MUNI|CALTRAIN|WAYMO|CLIPPER)\b/, 'SF'],
+  // Los Angeles
+  [/\b(LA|LOS\s*ANGELES|LAX|HOLLYWOOD|BEVERLY\s*HILLS)\b/, 'LA'],
+  // Seattle
   [/\b(SEA|SEATTLE)\b/, 'SEA'],
+  // Austin
   [/\b(AUS|AUSTIN)\b/, 'AUS'],
+  // Boston
   [/\b(BOS|BOSTON)\b/, 'BOS'],
+  // Mumbai
   [/\b(MUMBAI|BOM)\b/, 'Mumbai'],
 ];
 

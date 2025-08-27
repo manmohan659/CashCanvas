@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import React from 'react';
 import { parseCsv, parseOfx, ParsedTransaction } from '../lib/parsers';
 import { parsePdfFileWithDiagnostics } from '../lib/pdf/parsePdf';
-import { bulkUpsert, applyRulesToTransactions, getCurrentUserId, generateTransactionIdForUser, autoCategorizeAndAnnotate, sha256Hex, recordImportSummary, findExistingImportByHash } from '../lib/sqlite/init';
+import { bulkUpsert, applyRulesToTransactions, getCurrentUserId, generateTransactionIdForUser, autoCategorizeAndAnnotate, sha256Hex, recordImportSummary, findExistingImportByHash, computeTransactionFingerprint, getExistingTransactionIds, getExistingFingerprints } from '../lib/sqlite/init';
 interface ImporterProps {
   onImportComplete: () => void;
 }
@@ -62,14 +62,26 @@ export default function Importer({ onImportComplete }: ImporterProps) {
         throw new Error('Unsupported file type. Use .csv, .ofx or .pdf');
       }
 
-      const scopedRows = rows.map(r => ({
-        ...r,
-        id: generateTransactionIdForUser(userId, r.date, r.description, r.amount),
-        user_id: userId,
-        import_source: importSource,
-        import_batch: importBatch,
-      }));
-      await bulkUpsert('transactions', scopedRows);
+      // Build scoped rows with stable id and fingerprint
+      const scopedRows = rows.map(r => {
+        const id = generateTransactionIdForUser(userId, r.date, r.description, r.amount);
+        const fingerprint = computeTransactionFingerprint(r.date, r.description, r.amount);
+        return {
+          ...r,
+          id,
+          user_id: userId,
+          import_source: importSource,
+          import_batch: importBatch,
+          fingerprint,
+        };
+      });
+      // Deduplicate against DB before insert: check existing ids and fingerprints
+      const existingIds = await getExistingTransactionIds(userId, scopedRows.map(r => r.id));
+      const existingFps = await getExistingFingerprints(userId, scopedRows.map(r => r.fingerprint));
+      const newRows = scopedRows.filter(r => !existingIds.has(r.id) && !existingFps.has(r.fingerprint));
+      if (newRows.length > 0) {
+        await bulkUpsert('transactions', newRows);
+      }
       await applyRulesToTransactions();
       await autoCategorizeAndAnnotate();
       // Compute reconciliation totals and persist an import summary
@@ -101,7 +113,7 @@ export default function Importer({ onImportComplete }: ImporterProps) {
           : undefined,
       });
       try { if (typeof window !== 'undefined') window.dispatchEvent(new Event('cashcanvas-data-changed')); } catch {}
-      setMessage(`Imported ${rows.length} transactions. Net ${netTotal >= 0 ? '+' : ''}${netTotal.toFixed(2)} across ${periodStart || ''} → ${periodEnd || ''}`);
+      setMessage(`Imported ${newRows.length}/${rows.length} new transactions. Net ${netTotal >= 0 ? '+' : ''}${netTotal.toFixed(2)} across ${periodStart || ''} → ${periodEnd || ''}`);
       onImportComplete();
     } catch (e: any) {
       console.error('Import failed:', e);
@@ -139,7 +151,7 @@ export default function Importer({ onImportComplete }: ImporterProps) {
         <div className="dropzone-inner">
           <div className="drop-icon">⬆️</div>
           <div>
-            <div className="drop-title">Drag & drop a CSV or OFX</div>
+            <div className="drop-title">Drag & drop a CSV, OFX, or PDF</div>
             <div className="drop-sub">or click to choose a file</div>
           </div>
         </div>

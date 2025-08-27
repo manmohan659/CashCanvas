@@ -217,4 +217,25 @@ async function llmCategorizeUncategorized(limit = 20): Promise<number> {
   return updated;
 }
 
+export const SplitAgentTools = {
+  async recordExpenseSmart(intent: any): Promise<any> {
+    const { recordExpenseSmart } = await import('../split/smart');
+    return recordExpenseSmart(intent);
+  },
+  async preview(group_id: string, amount: number, split_type: string, options: any): Promise<any> {
+    const { getGroupMembers, computeSplits } = await import('../split/logic');
+    const members = await getGroupMembers(group_id);
+    const memberIds = members.map((m: any) => m.member_id);
+    return computeSplits(split_type as any, amount, memberIds, options);
+  },
+  async balances(group_id: string): Promise<any> {
+    const { groupBalances } = await import('../split/logic');
+    return groupBalances(group_id);
+  },
+  async simplify(group_id: string): Promise<any> {
+    const { simplifyDebts } = await import('../split/logic');
+    return simplifyDebts(group_id);
+  }
+};
+
 

@@ -4,9 +4,8 @@ import { runFinanceAgent } from '../../lib/agent/agent';
 import { AgentTools } from '../../lib/agent/schema';
 import PieSpend from '../charts/PieSpend';
 import BarMonthly from '../charts/BarMonthly';
-import dynamic from 'next/dynamic';
-
-const ReactMarkdown: any = dynamic(() => import('react-markdown').then(m => m.default as any), { ssr: false });
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Props {
   initialQuery?: string;
@@ -61,45 +60,16 @@ export default function AICompose({ initialQuery = '', openSettings }: Props) {
     }
   };
 
-  // Auto-run whenever a new initialQuery arrives
+  // When initialQuery changes, just prefill the input; do not auto-send
   useEffect(() => {
-    if (initialQuery && initialQuery !== messages[messages.length - 1]?.content) {
-      setQuery(initialQuery);
-      // fire and forget
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      run();
-    }
+    if (initialQuery) setQuery(initialQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialQuery]);
 
   return (
-    <div className="ai-two-pane">
+    <div className="ai-two-pane" style={{ gridTemplateColumns: blocks.length > 0 ? '0.9fr 1.1fr' : '1fr' }}>
       <div>
         <div style={{ display: 'grid', gap: 12 }}>
-          <div className="auto-cat">
-            <div className="left">
-              <h4 className="title">Auto-categorization</h4>
-              <p className="sub">Apply rules first, then heuristics. Creates new categories only if needed.</p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="metric-pill"><span className="metric-dot" /> Uncategorized: {uncatCount}</span>
-              <button className="btn primary" onClick={async () => {
-                  setBusy(true);
-                  try {
-                    const res: any = await AgentTools.autoCategorize();
-                    const left = await AgentTools.uncategorizedCount();
-                    setUncatCount(left);
-                    const total = (res.updatedByRules || 0) + (res.updatedByHeuristics || 0) + (res.updatedByLLM || 0);
-                    const llmPart = res.updatedByLLM ? `, ${res.updatedByLLM} via LLM` : '';
-                    setBlocks((b) => [{ kind: 'text', content: `Categorized ${total} transactions (${res.updatedByRules} via rules, ${res.updatedByHeuristics} via heuristics${llmPart}). Remaining uncategorized: ${left}.` }, ...b]);
-                  } catch (e: any) {
-                    setBlocks((b) => [{ kind: 'text', content: `Auto-categorization failed: ${e?.message || e}` }, ...b]);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}>Run</button>
-            </div>
-          </div>
           {blocks.map((b, i) => (
             <div className="card" key={i}>
               <div className="card-body">
@@ -121,24 +91,52 @@ export default function AICompose({ initialQuery = '', openSettings }: Props) {
           ))}
         </div>
       </div>
-      <div className="card" style={{ maxHeight: 520, overflow: 'auto' }}>
-        <div className="card-body">
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', height: 520 }}>
+        <div className="card-body" style={{ flex: 1, overflow: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div className="muted">Chat</div>
+            <button
+              className="btn ghost"
+              title={`Auto-categorize • Uncategorized: ${uncatCount}`}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const res: any = await AgentTools.autoCategorize();
+                  const left = await AgentTools.uncategorizedCount();
+                  setUncatCount(left);
+                  const total = (res.updatedByRules || 0) + (res.updatedByHeuristics || 0) + (res.updatedByLLM || 0);
+                  const llmPart = res.updatedByLLM ? `, ${res.updatedByLLM} via LLM` : '';
+                  setBlocks((b) => [{ kind: 'text', content: `Categorized ${total} transactions (${res.updatedByRules} via rules, ${res.updatedByHeuristics} via heuristics${llmPart}). Remaining uncategorized: ${left}.` }, ...b]);
+                } catch (e: any) {
+                  setBlocks((b) => [{ kind: 'text', content: `Auto-categorization failed: ${e?.message || e}` }, ...b]);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >Auto-categorize</button>
+          </div>
           <div style={{ display: 'grid', gap: 10 }}>
             {messages.filter(m => m.role !== 'system').map((m, i) => (
-              <div key={i} style={{
-                background: m.role === 'user' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.12)',
-                border: '1px solid var(--border)', borderRadius: 12, padding: 10
-              }}>
-                <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{m.role}</div>
+              <div key={i} className={`chat-bubble ${m.role}`}>
+                <div className="chat-meta">
+                  <span className="avatar" />
+                  <span>{m.role === 'user' ? 'You' : 'Assistant'}</span>
+                </div>
                 {m.role === 'assistant' ? (
                   <div className="markdown-body">
-                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
                   </div>
                 ) : (
                   <div>{m.content}</div>
                 )}
               </div>
             ))}
+            {busy && (
+              <div className="chat-bubble assistant">
+                <div className="chat-meta"><span className="avatar" /><span>Assistant</span></div>
+                <div className="typing" />
+              </div>
+            )}
           </div>
           {!canChat && (
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -146,6 +144,17 @@ export default function AICompose({ initialQuery = '', openSettings }: Props) {
               <button className="btn secondary" onClick={openSettings}>LLM Settings</button>
             </div>
           )}
+        </div>
+        <div style={{ borderTop: '1px solid var(--border)', padding: 10, display: 'flex', gap: 8 }}>
+          <input
+            placeholder={busy ? 'Working…' : 'Ask anything… Press Enter to send'}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !busy) { e.preventDefault(); run(); } }}
+            style={{ flex: 1 }}
+            disabled={busy}
+          />
+          <button className="btn primary" disabled={busy || !query.trim()} onClick={() => run()}>{busy ? 'Sending…' : 'Send'}</button>
         </div>
       </div>
     </div>
