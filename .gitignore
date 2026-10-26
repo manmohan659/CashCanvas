@@ -109,3 +109,5 @@ next-env.d.ts
 # Local SQLite DBs #
 ###################
 *.db
+.env.*
+!.env.example
