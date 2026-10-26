@@ -1,0 +1,50 @@
+name: Static credential guard
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: credential-guard-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Prepare trusted scanner
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/credential-guard"
+          if [[ -n "$BASE_SHA" ]]; then
+            # PR changes cannot replace the scanner being used for that PR.
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            # Reviewed initial installation: bootstrap base has no scanner yet.
+            # Never fall back to the mutable PR head.
+            if ! git cat-file -e "$BASE_SHA:security/security_scan.py" 2>/dev/null; then
+              BASE_SHA=527736b5b671523f8e4c6b07153925a0fcabd2b8
+            fi
+            git show "$BASE_SHA:security/security_scan.py" > "$RUNNER_TEMP/credential-guard/security_scan.py"
+            git show "$BASE_SHA:security/test_security_scan.py" > "$RUNNER_TEMP/credential-guard/test_security_scan.py"
+          else
+            cp security/security_scan.py security/test_security_scan.py "$RUNNER_TEMP/credential-guard/"
+          fi
+      - name: Synthetic detector tests
+        shell: bash
+        run: python3 -I -S "$RUNNER_TEMP/credential-guard/test_security_scan.py"
+      - name: Scan tracked files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -S "$RUNNER_TEMP/credential-guard/security_scan.py" "$GITHUB_WORKSPACE" --mode tracked
